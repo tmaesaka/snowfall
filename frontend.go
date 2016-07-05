@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+var numWorkers = 4
+var jobs = make(chan string, numWorkers)
+var results = make(chan string, numWorkers)
+
 var services = [...]string{
 	"http://localhost:8081",
 	"http://localhost:8081",
@@ -28,44 +32,49 @@ func buildResponse(results []string, elapsed time.Duration) string {
 	return rv
 }
 
-func sendRequest(reqId int, url string, ch chan string) {
-	if reqId%2 == 0 {
-		time.Sleep(time.Second * 2)
+func worker(id int, jobs <-chan string, results chan<- string) {
+	for url := range jobs {
+		if id%2 == 0 {
+			time.Sleep(time.Second * 2)
+		}
+
+		resp, err := http.Get(url)
+
+		if err != nil {
+			results <- "request failed"
+			return
+		}
+
+		defer resp.Body.Close()
+		body, _ := ioutil.ReadAll(resp.Body)
+		results <- fmt.Sprintf("worker_id: %d, %s", id, string(body))
 	}
-
-	resp, err := http.Get(url)
-	if err != nil {
-		ch <- "request failed"
-		return
-	}
-
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	ch <- fmt.Sprintf("request_id: %d, %s", reqId, string(body))
 }
 
-func concurrentRequestsHandler(w http.ResponseWriter, r *http.Request) {
-	ch := make(chan string)
-	results := make([]string, len(services))
-
+func workerHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
-	for i, url := range services {
-		go sendRequest(i, url, ch)
+	for _, url := range services {
+		jobs <- url
 	}
 
-	for i := 0; i < cap(results); i++ {
-		results[i] = <-ch
+	buf := make([]string, len(services))
+	for i := 0; i < len(services); i++ {
+		buf[i] = <-results
 	}
 
-	res := buildResponse(results, time.Since(start))
+	res := buildResponse(buf, time.Since(start))
 	fmt.Fprintf(w, res)
 }
 
 func main() {
 	fmt.Fprint(os.Stderr, "Starting frontend on port 8080...\n")
 
-	http.HandleFunc("/", concurrentRequestsHandler)
+	for i := 0; i < numWorkers; i++ {
+		go worker(i, jobs, results)
+		fmt.Fprintf(os.Stderr, "> Spawned worker: %d\n", i)
+	}
+
+	http.HandleFunc("/", workerHandler)
 	http.ListenAndServe(":8080", nil)
 }
