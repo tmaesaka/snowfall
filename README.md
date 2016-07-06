@@ -21,16 +21,12 @@ $ curl localhost:8081
 
 ### Frontend
 
-Frontend is the interesting part that concurrently sends requests to the backend (see above) and groups the responses together. The frontend is currently hardcoded to spawn four worker [goroutines](https://golang.org/doc/effective_go.html#goroutines), where each worker is given a sequential ID. For demo purpose, workers with an even id number will sleep for two seconds.
+Frontend is the interesting part that concurrently sends requests to the backend (see above) and groups the responses together. The frontend is currently hardcoded to spawn four worker [goroutines](https://golang.org/doc/effective_go.html#goroutines) on each request. For demo purpose, each worker is given a sequential ID and workers with an even ID number will sleep for two seconds.
 
 ```
 $ go build frontend.go
 $ ./frontend
 Starting frontend on port 8080...
-> Spawned worker: 0
-> Spawned worker: 1
-> Spawned worker: 2
-> Spawned worker: 3
 
 $ curl localhost:8080
 worker_id: 3, 2016-07-05 17:17:54.697178619 +0000 UTC

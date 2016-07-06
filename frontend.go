@@ -8,15 +8,20 @@ import (
 	"time"
 )
 
-var numWorkers = 4
-var jobs = make(chan string, numWorkers)
-var results = make(chan string, numWorkers)
+var numWorkersPerRequest = 4
 
 var services = [...]string{
 	"http://localhost:8081",
 	"http://localhost:8081",
 	"http://localhost:8081",
 	"http://localhost:8081",
+}
+
+func spawnWorkers(jobs <-chan string, results chan<- string) {
+	for i := 0; i < numWorkersPerRequest; i++ {
+		go worker(i, jobs, results)
+		fmt.Fprintf(os.Stderr, "> Spawned worker: %d\n", i)
+	}
 }
 
 // TODO: Build a proper JSON response with "encoding/json".
@@ -52,6 +57,10 @@ func worker(id int, jobs <-chan string, results chan<- string) {
 }
 
 func workerHandler(w http.ResponseWriter, r *http.Request) {
+	jobs := make(chan string, numWorkersPerRequest)
+	results := make(chan string, numWorkersPerRequest)
+
+	spawnWorkers(jobs, results)
 	start := time.Now()
 
 	for _, url := range services {
@@ -69,11 +78,6 @@ func workerHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	fmt.Fprint(os.Stderr, "Starting frontend on port 8080...\n")
-
-	for i := 0; i < numWorkers; i++ {
-		go worker(i, jobs, results)
-		fmt.Fprintf(os.Stderr, "> Spawned worker: %d\n", i)
-	}
 
 	http.HandleFunc("/", workerHandler)
 	http.ListenAndServe(":8080", nil)
