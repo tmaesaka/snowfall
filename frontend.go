@@ -5,10 +5,14 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
-var numWorkersPerRequest = 4
+var config struct {
+	numWorkersPerRequest int
+	port                 int
+}
 
 var services = [...]string{
 	"http://localhost:8081",
@@ -17,8 +21,13 @@ var services = [...]string{
 	"http://localhost:8081",
 }
 
+func initConfig() {
+	config.numWorkersPerRequest = 4
+	config.port = 8080
+}
+
 func spawnWorkers(jobs <-chan string, results chan<- string) {
-	for i := 0; i < numWorkersPerRequest; i++ {
+	for i := 0; i < config.numWorkersPerRequest; i++ {
 		go worker(i, jobs, results)
 		fmt.Fprintf(os.Stderr, "> Spawned worker: %d\n", i)
 	}
@@ -57,8 +66,8 @@ func worker(id int, jobs <-chan string, results chan<- string) {
 }
 
 func workerHandler(w http.ResponseWriter, r *http.Request) {
-	jobs := make(chan string, numWorkersPerRequest)
-	results := make(chan string, numWorkersPerRequest)
+	jobs := make(chan string, config.numWorkersPerRequest)
+	results := make(chan string, config.numWorkersPerRequest)
 
 	spawnWorkers(jobs, results)
 	start := time.Now()
@@ -77,8 +86,10 @@ func workerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	fmt.Fprint(os.Stderr, "Starting frontend on port 8080...\n")
+	initConfig()
+
+	fmt.Fprintf(os.Stderr, "Starting frontend on port %d...\n", config.port)
 
 	http.HandleFunc("/", workerHandler)
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":"+strconv.Itoa(config.port), nil)
 }
